@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+compound-eye.db
+compound-eye.db-wal
+compound-eye.db-shm

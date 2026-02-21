@@ -1,0 +1,50 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+```bash
+bun install                                                  # Install dependencies
+bun run dev                                                  # Dev mode with hot reload (port 4141)
+bun run dev -- --port 8080                                   # Dev mode on custom port
+bun run start                                                # Production start
+bun run src/cli.ts add "observation text" --tag x --project y  # CLI capture
+```
+
+No test suite yet.
+
+## Architecture
+
+Two data paths, both through the HTTP API:
+
+- **Browser**: `public/index.html → fetch() → server.ts → db.ts → SQLite`
+- **CLI**: `cli.ts → fetch() → server.ts → db.ts → SQLite`
+
+The CLI is a standalone HTTP client — it does not import internal modules or access the database directly. The server must be running for CLI capture to work.
+
+- **`src/db.ts`** — Data layer. All types (`Observation`, `ObservationCreate`, etc.) and SQLite queries. Uses `bun:sqlite` synchronous API. Tags stored as JSON arrays in a TEXT column, queried with `json_each()`. Every function takes `db: Database` as its first parameter.
+
+- **`src/server.ts`** — Hono app with CRUD routes for observations plus an export endpoint. `createApp(db)` returns `{ app, start }`. Static frontend served via `Bun.file()`.
+
+- **`src/index.ts`** — Entry point. Parses `--port`, initializes database, starts server, handles SIGINT/SIGTERM.
+
+- **`src/cli.ts`** — Minimal CLI for quick capture. Parses args, POSTs to the local API.
+
+- **`public/index.html`** — Single-file frontend with inline CSS/JS. Dark theme, no framework, no build step, no CDN dependencies.
+
+## Conventions
+
+- TypeScript strict mode, no classes — functions and plain objects/interfaces only
+- Explicit return type annotations on exported functions
+- `null` for absence (not `undefined`)
+- `node:` prefix for Node.js stdlib imports
+- Relative imports with `.ts` extension
+- `Bun.serve()` for the HTTP server, `Bun.file()` for file reads
+- Frontend is vanilla HTML/CSS/JS, dark mode, monospace font
+
+## Data model
+
+Observations table with statuses: `observed` → `pattern_confirmed` → `solution_designed` → `automated`.
+
+Tags are JSON arrays stored in a TEXT column. Projects are optional free-text strings.

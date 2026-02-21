@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>compound-eye</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117;
+      --bg-card: #161b22;
+      --bg-input: #0d1117;
+      --border: #30363d;
+      --text: #e6edf3;
+      --text-muted: #7d8590;
+      --text-dim: #484f58;
+      --accent: #58a6ff;
+      --status-observed: #7d8590;
+      --status-pattern_confirmed: #d29922;
+      --status-solution_designed: #3fb950;
+      --status-automated: #8957e5;
+      --font-mono: "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", monospace;
+    }
+
+    body {
+      font-family: var(--font-mono);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 24px 16px 80px;
+    }
+
+    header {
+      margin-bottom: 24px;
+    }
+
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+    }
+
+    /* Capture form */
+    #capture-form {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    #capture-form input {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      padding: 8px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    #capture-form input:focus {
+      border-color: var(--accent);
+    }
+
+    #capture-form input::placeholder {
+      color: var(--text-dim);
+    }
+
+    #capture-text {
+      flex: 3;
+    }
+
+    #capture-tags, #capture-project {
+      flex: 1;
+    }
+
+    #capture-flash {
+      font-size: 12px;
+      color: var(--status-solution_designed);
+      opacity: 0;
+      transition: opacity 0.2s;
+      margin-bottom: 8px;
+      height: 18px;
+    }
+
+    #capture-flash.visible {
+      opacity: 1;
+    }
+
+    /* Filters */
+    #filters {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+
+    #filters select, #filters input {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 6px 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      outline: none;
+    }
+
+    #filters select {
+      cursor: pointer;
+    }
+
+    #filters input::placeholder {
+      color: var(--text-dim);
+    }
+
+    #filters select:focus, #filters input:focus {
+      border-color: var(--accent);
+    }
+
+    /* Observation list */
+    #observation-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .observation {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+
+    .observation:hover {
+      border-color: var(--text-dim);
+    }
+
+    .obs-checkbox {
+      margin-top: 3px;
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+
+    .obs-status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      user-select: none;
+      transition: opacity 0.15s;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .obs-status:hover {
+      opacity: 0.8;
+    }
+
+    .obs-status[data-status="observed"] {
+      background: var(--status-observed);
+      color: #fff;
+    }
+
+    .obs-status[data-status="pattern_confirmed"] {
+      background: var(--status-pattern_confirmed);
+      color: #000;
+    }
+
+    .obs-status[data-status="solution_designed"] {
+      background: var(--status-solution_designed);
+      color: #000;
+    }
+
+    .obs-status[data-status="automated"] {
+      background: var(--status-automated);
+      color: #fff;
+    }
+
+    .obs-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .obs-text {
+      margin-bottom: 4px;
+      word-break: break-word;
+    }
+
+    .obs-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .obs-tag {
+      display: inline-block;
+      padding: 1px 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    .obs-project {
+      color: var(--accent);
+    }
+
+    .obs-time {
+      color: var(--text-dim);
+    }
+
+    .obs-delete {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0 4px;
+      margin-top: 1px;
+      flex-shrink: 0;
+    }
+
+    .obs-delete:hover {
+      color: #f85149;
+    }
+
+    /* Empty state */
+    #empty-state {
+      text-align: center;
+      padding: 48px 16px;
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
+    /* Action bar */
+    #action-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--bg-card);
+      border-top: 1px solid var(--border);
+      padding: 12px 16px;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+
+    #action-bar.visible {
+      display: flex;
+    }
+
+    #action-bar button {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      padding: 6px 16px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    #action-bar button:hover {
+      opacity: 0.9;
+    }
+
+    #action-bar .count {
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>compound-eye</h1>
+    </header>
+
+    <form id="capture-form">
+      <input id="capture-text" type="text" placeholder="what did you observe?" autofocus />
+      <input id="capture-tags" type="text" placeholder="tags" />
+      <input id="capture-project" type="text" placeholder="project" />
+    </form>
+    <div id="capture-flash"></div>
+
+    <div id="filters">
+      <select id="filter-status">
+        <option value="">all statuses</option>
+        <option value="observed">observed</option>
+        <option value="pattern_confirmed">pattern confirmed</option>
+        <option value="solution_designed">solution designed</option>
+        <option value="automated">automated</option>
+      </select>
+      <input id="filter-tag" type="text" placeholder="filter by tag" />
+      <input id="filter-project" type="text" placeholder="filter by project" />
+    </div>
+
+    <div id="observation-list"></div>
+    <div id="empty-state" style="display: none;">No observations yet. Start typing above.</div>
+  </div>
+
+  <div id="action-bar">
+    <span class="count"><span id="selected-count">0</span> selected</span>
+    <button id="copy-btn">Copy for Claude</button>
+  </div>
+
+  <script>
+    (function () {
+      const STATUS_ORDER = ["observed", "pattern_confirmed", "solution_designed", "automated"];
+
+      let observations = [];
+      let selectedIds = new Set();
+      let filterDebounce = null;
+
+      const captureForm = document.getElementById("capture-form");
+      const captureText = document.getElementById("capture-text");
+      const captureTags = document.getElementById("capture-tags");
+      const captureProject = document.getElementById("capture-project");
+      const captureFlash = document.getElementById("capture-flash");
+      const filterStatus = document.getElementById("filter-status");
+      const filterTag = document.getElementById("filter-tag");
+      const filterProject = document.getElementById("filter-project");
+      const observationList = document.getElementById("observation-list");
+      const emptyState = document.getElementById("empty-state");
+      const actionBar = document.getElementById("action-bar");
+      const selectedCount = document.getElementById("selected-count");
+      const copyBtn = document.getElementById("copy-btn");
+
+      function esc(str) {
+        const el = document.createElement("span");
+        el.textContent = str;
+        return el.innerHTML;
+      }
+
+      function relativeTime(iso) {
+        const now = Date.now();
+        const then = new Date(iso.endsWith("Z") ? iso : iso + "Z").getTime();
+        const diff = now - then;
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return "just now";
+        if (mins < 60) return mins + "m ago";
+        const hours = Math.floor(mins / 60);
+        if (hours < 24) return hours + "h ago";
+        const days = Math.floor(hours / 24);
+        if (days < 30) return days + "d ago";
+        return iso.slice(0, 10);
+      }
+
+      function buildFilterParams() {
+        const params = new URLSearchParams();
+        if (filterStatus.value) params.set("status", filterStatus.value);
+        if (filterTag.value.trim()) params.set("tag", filterTag.value.trim());
+        if (filterProject.value.trim()) params.set("project", filterProject.value.trim());
+        return params.toString();
+      }
+
+      async function fetchObservations() {
+        const query = buildFilterParams();
+        const url = "/api/observations" + (query ? "?" + query : "");
+        try {
+          const res = await fetch(url);
+          observations = await res.json();
+        } catch (err) {
+          console.error("Failed to fetch observations:", err);
+          observations = [];
+        }
+        render();
+      }
+
+      function render() {
+        // Clean up selectedIds — remove any that are no longer in the list
+        const currentIds = new Set(observations.map(o => o.id));
+        for (const id of selectedIds) {
+          if (!currentIds.has(id)) selectedIds.delete(id);
+        }
+
+        if (observations.length === 0) {
+          observationList.innerHTML = "";
+          emptyState.style.display = "block";
+        } else {
+          emptyState.style.display = "none";
+          observationList.innerHTML = observations.map(renderCard).join("");
+        }
+
+        updateActionBar();
+      }
+
+      function renderCard(obs) {
+        const tags = obs.tags ? JSON.parse(obs.tags) : [];
+        const checked = selectedIds.has(obs.id) ? "checked" : "";
+
+        const tagHtml = tags.map(t => '<span class="obs-tag">' + esc(t) + "</span>").join("");
+        const projectHtml = obs.project
+          ? '<span class="obs-project">' + esc(obs.project) + "</span>"
+          : "";
+
+        return '<div class="observation">' +
+          '<input type="checkbox" class="obs-checkbox" data-id="' + obs.id + '" ' + checked + ' />' +
+          '<span class="obs-status" data-status="' + esc(obs.status) + '" data-id="' + obs.id + '">' + esc(obs.status) + "</span>" +
+          '<div class="obs-body">' +
+            '<div class="obs-text">' + esc(obs.text) + "</div>" +
+            '<div class="obs-meta">' +
+              tagHtml +
+              projectHtml +
+              '<span class="obs-time">' + relativeTime(obs.created_at) + "</span>" +
+            "</div>" +
+          "</div>" +
+          '<button class="obs-delete" data-id="' + obs.id + '" title="delete">\u00d7</button>' +
+        "</div>";
+      }
+
+      function updateActionBar() {
+        selectedCount.textContent = selectedIds.size;
+        if (selectedIds.size > 0) {
+          actionBar.classList.add("visible");
+        } else {
+          actionBar.classList.remove("visible");
+        }
+      }
+
+      function flash(msg) {
+        captureFlash.textContent = msg;
+        captureFlash.classList.add("visible");
+        setTimeout(() => captureFlash.classList.remove("visible"), 1500);
+      }
+
+      // Capture form
+      captureForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const text = captureText.value.trim();
+        if (!text) return;
+
+        const tagsRaw = captureTags.value.trim();
+        const tags = tagsRaw ? tagsRaw.split(",").map(t => t.trim()).filter(Boolean) : null;
+        const project = captureProject.value.trim() || null;
+
+        const body = { text };
+        if (tags && tags.length > 0) body.tags = tags;
+        if (project) body.project = project;
+
+        try {
+          const res = await fetch("/api/observations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+
+          if (res.ok) {
+            captureText.value = "";
+            captureText.focus();
+            flash("captured");
+            await fetchObservations();
+          }
+        } catch (err) {
+          console.error("Failed to create observation:", err);
+        }
+      });
+
+      // Status click — advance to next status
+      observationList.addEventListener("click", async (e) => {
+        const statusEl = e.target.closest(".obs-status");
+        if (statusEl) {
+          const id = parseInt(statusEl.dataset.id, 10);
+          const current = statusEl.dataset.status;
+          const idx = STATUS_ORDER.indexOf(current);
+          if (idx < 0 || idx >= STATUS_ORDER.length - 1) return;
+          const next = STATUS_ORDER[idx + 1];
+
+          try {
+            await fetch("/api/observations/" + id, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: next }),
+            });
+            await fetchObservations();
+          } catch (err) {
+            console.error("Failed to update status:", err);
+          }
+          return;
+        }
+
+        // Delete click
+        const deleteEl = e.target.closest(".obs-delete");
+        if (deleteEl) {
+          const id = parseInt(deleteEl.dataset.id, 10);
+          try {
+            await fetch("/api/observations/" + id, { method: "DELETE" });
+            selectedIds.delete(id);
+            await fetchObservations();
+          } catch (err) {
+            console.error("Failed to delete:", err);
+          }
+          return;
+        }
+      });
+
+      // Checkbox changes
+      observationList.addEventListener("change", (e) => {
+        if (e.target.classList.contains("obs-checkbox")) {
+          const id = parseInt(e.target.dataset.id, 10);
+          if (e.target.checked) {
+            selectedIds.add(id);
+          } else {
+            selectedIds.delete(id);
+          }
+          updateActionBar();
+        }
+      });
+
+      // Copy for Claude
+      copyBtn.addEventListener("click", async () => {
+        if (selectedIds.size === 0) return;
+
+        try {
+          const res = await fetch("/api/observations/export", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids: Array.from(selectedIds) }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            await navigator.clipboard.writeText(data.markdown);
+            copyBtn.textContent = "Copied!";
+            setTimeout(() => { copyBtn.textContent = "Copy for Claude"; }, 1500);
+          }
+        } catch (err) {
+          console.error("Failed to export:", err);
+        }
+      });
+
+      // Filters
+      filterStatus.addEventListener("change", fetchObservations);
+
+      function debouncedFetch() {
+        clearTimeout(filterDebounce);
+        filterDebounce = setTimeout(fetchObservations, 300);
+      }
+
+      filterTag.addEventListener("input", debouncedFetch);
+      filterProject.addEventListener("input", debouncedFetch);
+
+      // Initial load
+      fetchObservations();
+    })();
+  </script>
+</body>
+</html>
