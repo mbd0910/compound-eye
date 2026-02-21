@@ -12,7 +12,8 @@ bun run dev                                                  # Dev mode with hot
 bun run dev -- --port 8080                                   # Dev mode on custom port
 bun run start                                                # Production start
 bunx tsc --noEmit                                            # Type-check (no lint or test suite yet)
-bun run src/cli.ts add "observation text" --tag x --project o/r  # CLI capture
+bun run src/cli.ts add "observation text" --project o/r              # CLI capture
+bun run src/cli.ts add "text" --source claude --project o/r          # CLI capture (agent source)
 bun run src/cli.ts scan ~/code                                   # Scan & register projects
 ```
 
@@ -30,8 +31,8 @@ The CLI is a standalone HTTP client — it does not import internal modules or a
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/` | Serves `public/index.html` |
-| POST | `/api/observations` | Create observation (`{text, tags?, project?}`) |
-| GET | `/api/observations` | List observations (query: `?status=&tag=&project=`) |
+| POST | `/api/observations` | Create observation (`{text, source?, project}`) |
+| GET | `/api/observations` | List observations (query: `?status=&source=&project=`) |
 | PATCH | `/api/observations/:id` | Update observation fields |
 | DELETE | `/api/observations/:id` | Delete observation |
 | POST | `/api/observations/export` | Export as markdown (`{ids: number[]}`) |
@@ -40,7 +41,7 @@ The CLI is a standalone HTTP client — it does not import internal modules or a
 | DELETE | `/api/projects/:id` | Delete project |
 | POST | `/api/projects/scan` | Scan directory for git repos (`{path}`) |
 
-- **`src/db.ts`** — Data layer. All types (`Observation`, `ObservationCreate`, etc.) and SQLite queries. Uses `bun:sqlite` synchronous API. Tags stored as JSON arrays in a TEXT column, queried with `json_each()`. Every function takes `db: Database` as its first parameter.
+- **`src/db.ts`** — Data layer. All types (`Observation`, `ObservationCreate`, etc.) and SQLite queries. Uses `bun:sqlite` synchronous API. Every function takes `db: Database` as its first parameter. Observations have a `source` field (default `'human'`) to track who originated the observation.
 
 - **`src/server.ts`** — Hono app with CRUD routes for observations plus an export endpoint. `createApp(db)` returns `{ app, start }`. Static frontend served via `Bun.file()`.
 
@@ -68,6 +69,6 @@ See [docs/schema.md](docs/schema.md) for the full ER diagram.
 
 Observations table with statuses: `observed` → `pattern_confirmed` → `solution_designed` → `automated`.
 
-Tags are JSON arrays stored in a TEXT column. Projects use `owner/repo` format and are registered in a separate `projects` table (auto-registered when used via API/CLI).
+Each observation has a `source` field (default `'human'`) indicating who originated it — `'human'` for engineer observations, or an agent identifier (e.g. `'claude'`) for AI-originated feedback. Tags column exists but is reserved for future auto-classification. Projects use `owner/repo` format and are registered in a separate `projects` table (auto-registered when used via API/CLI).
 
 SQLite database file (`compound-eye.db`) is created in the working directory with WAL mode enabled.

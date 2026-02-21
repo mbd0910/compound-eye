@@ -4,6 +4,7 @@ export interface Observation {
   id: number;
   text: string;
   tags: string | null;
+  source: string;
   status: string;
   project: string | null;
   created_at: string;
@@ -12,20 +13,20 @@ export interface Observation {
 
 export interface ObservationCreate {
   text: string;
-  tags: string[] | null;
+  source?: string;
   project: string | null;
 }
 
 export interface ObservationUpdate {
   text: string | null;
-  tags: string[] | null;
+  source: string | null;
   status: string | null;
   project: string | null;
 }
 
 export interface ObservationFilters {
   status: string | null;
-  tag: string | null;
+  source: string | null;
   project: string | null;
 }
 
@@ -58,6 +59,7 @@ export function initDatabase(): Database {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       text TEXT NOT NULL,
       tags TEXT,
+      source TEXT NOT NULL DEFAULT 'human',
       status TEXT NOT NULL DEFAULT 'observed',
       project TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
@@ -81,13 +83,13 @@ export function createObservation(
   if (data.project) {
     ensureProject(db, data.project);
   }
-  const tags = data.tags ? JSON.stringify(data.tags) : null;
+  const source = data.source ?? "human";
   const stmt = db.prepare(`
-    INSERT INTO observations (text, tags, project)
+    INSERT INTO observations (text, source, project)
     VALUES (?, ?, ?)
     RETURNING *
   `);
-  return stmt.get(data.text, tags, data.project) as Observation;
+  return stmt.get(data.text, source, data.project) as Observation;
 }
 
 export function listObservations(
@@ -102,11 +104,9 @@ export function listObservations(
     params.push(filters.status);
   }
 
-  if (filters?.tag) {
-    conditions.push(
-      "EXISTS (SELECT 1 FROM json_each(observations.tags) WHERE json_each.value = ?)"
-    );
-    params.push(filters.tag);
+  if (filters?.source) {
+    conditions.push("source = ?");
+    params.push(filters.source);
   }
 
   if (filters?.project) {
@@ -133,9 +133,9 @@ export function updateObservation(
     params.push(updates.text);
   }
 
-  if (updates.tags !== null) {
-    sets.push("tags = ?");
-    params.push(JSON.stringify(updates.tags));
+  if (updates.source !== null) {
+    sets.push("source = ?");
+    params.push(updates.source);
   }
 
   if (updates.status !== null) {

@@ -79,10 +79,6 @@
       flex: 3;
     }
 
-    #capture-tags {
-      flex: 1;
-    }
-
     #capture-project {
       flex: 1;
       font-family: var(--font-mono);
@@ -248,13 +244,14 @@
       color: var(--text-muted);
     }
 
-    .obs-tag {
+    .obs-source {
       display: inline-block;
       padding: 1px 6px;
       background: var(--bg);
-      border: 1px solid var(--border);
+      border: 1px solid var(--status-automated);
       border-radius: 4px;
       font-size: 11px;
+      color: var(--status-automated);
     }
 
     .obs-project {
@@ -437,7 +434,6 @@
 
     <form id="capture-form">
       <input id="capture-text" type="text" placeholder="what did you observe?" autofocus />
-      <input id="capture-tags" type="text" placeholder="tags" />
       <select id="capture-project" required>
         <option value="" disabled selected>project</option>
       </select>
@@ -453,7 +449,11 @@
         <option value="solution_designed">solution designed</option>
         <option value="automated">automated</option>
       </select>
-      <input id="filter-tag" type="text" placeholder="filter by tag" />
+      <select id="filter-source">
+        <option value="">all sources</option>
+        <option value="human">human</option>
+        <option value="agent">agent</option>
+      </select>
       <select id="filter-project">
         <option value="">all projects</option>
       </select>
@@ -497,15 +497,13 @@
       let observations = [];
       let projects = [];
       let selectedIds = new Set();
-      let filterDebounce = null;
 
       const captureForm = document.getElementById("capture-form");
       const captureText = document.getElementById("capture-text");
-      const captureTags = document.getElementById("capture-tags");
       const captureProject = document.getElementById("capture-project");
       const captureFlash = document.getElementById("capture-flash");
       const filterStatus = document.getElementById("filter-status");
-      const filterTag = document.getElementById("filter-tag");
+      const filterSource = document.getElementById("filter-source");
       const filterProject = document.getElementById("filter-project");
       const observationList = document.getElementById("observation-list");
       const emptyState = document.getElementById("empty-state");
@@ -536,7 +534,7 @@
       function buildFilterParams() {
         const params = new URLSearchParams();
         if (filterStatus.value) params.set("status", filterStatus.value);
-        if (filterTag.value.trim()) params.set("tag", filterTag.value.trim());
+        if (filterSource.value) params.set("source", filterSource.value);
         if (filterProject.value) params.set("project", filterProject.value);
         return params.toString();
       }
@@ -573,10 +571,11 @@
       }
 
       function renderCard(obs) {
-        const tags = obs.tags ? JSON.parse(obs.tags) : [];
         const checked = selectedIds.has(obs.id) ? "checked" : "";
 
-        const tagHtml = tags.map(t => '<span class="obs-tag">' + esc(t) + "</span>").join("");
+        const sourceHtml = obs.source && obs.source !== "human"
+          ? '<span class="obs-source">' + esc(obs.source) + "</span>"
+          : "";
         const projectHtml = obs.project
           ? '<span class="obs-project">' + esc(obs.project) + "</span>"
           : "";
@@ -587,7 +586,7 @@
           '<div class="obs-body">' +
             '<div class="obs-text">' + esc(obs.text) + "</div>" +
             '<div class="obs-meta">' +
-              tagHtml +
+              sourceHtml +
               projectHtml +
               '<span class="obs-time">' + relativeTime(obs.created_at) + "</span>" +
             "</div>" +
@@ -617,12 +616,9 @@
         const text = captureText.value.trim();
         if (!text) return;
 
-        const tagsRaw = captureTags.value.trim();
-        const tags = tagsRaw ? tagsRaw.split(",").map(t => t.trim()).filter(Boolean) : null;
         const project = captureProject.value || null;
 
         const body = { text };
-        if (tags && tags.length > 0) body.tags = tags;
         if (project) body.project = project;
 
         try {
@@ -719,12 +715,7 @@
       // Filters
       filterStatus.addEventListener("change", fetchObservations);
 
-      function debouncedFetch() {
-        clearTimeout(filterDebounce);
-        filterDebounce = setTimeout(fetchObservations, 300);
-      }
-
-      filterTag.addEventListener("input", debouncedFetch);
+      filterSource.addEventListener("change", fetchObservations);
       filterProject.addEventListener("change", fetchObservations);
 
       // --- Project management ---

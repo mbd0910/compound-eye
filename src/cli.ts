@@ -13,7 +13,7 @@ Commands:
   scan    Scan directory for git repos and register as projects
 
 Options (add):
-  --tag <value>      Add a tag (can be used multiple times)
+  --source <value>   Who originated this observation (default: human)
   --project <value>  Set the project (owner/repo format)
   --port <number>    Server port (default: 4141)
 
@@ -21,7 +21,8 @@ Options (scan):
   --port <number>    Server port (default: 4141)
 
 Example:
-  bun run src/cli.ts add "flaky test retries always happen in CI" --tag testing --project anthropics/claude-code
+  bun run src/cli.ts add "flaky test retries always happen in CI" --project anthropics/claude-code
+  bun run src/cli.ts add "build cache misses on type changes" --source claude --project anthropics/claude-code
   bun run src/cli.ts scan ~/code
 `.trim());
 }
@@ -29,7 +30,7 @@ Example:
 interface ParsedArgs {
   command: string | null;
   text: string | null;
-  tags: string[];
+  source: string;
   project: string | null;
   port: number;
 }
@@ -37,7 +38,7 @@ interface ParsedArgs {
 function parseArgs(args: string[]): ParsedArgs {
   let command: string | null = null;
   let text: string | null = null;
-  const tags: string[] = [];
+  let source = "human";
   let project: string | null = null;
   let port = 4141;
 
@@ -58,8 +59,8 @@ function parseArgs(args: string[]): ParsedArgs {
   // Named args
   for (; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--tag" && args[i + 1]) {
-      tags.push(args[i + 1]);
+    if (arg === "--source" && args[i + 1]) {
+      source = args[i + 1];
       i++;
     } else if (arg === "--project" && args[i + 1]) {
       project = args[i + 1];
@@ -77,7 +78,7 @@ function parseArgs(args: string[]): ParsedArgs {
     }
   }
 
-  return { command, text, tags, project, port };
+  return { command, text, source, project, port };
 }
 
 async function handleAdd(args: ParsedArgs): Promise<void> {
@@ -92,8 +93,7 @@ async function handleAdd(args: ParsedArgs): Promise<void> {
     process.exit(1);
   }
 
-  const body: Record<string, unknown> = { text: args.text, project: args.project };
-  if (args.tags.length > 0) body.tags = args.tags;
+  const body: Record<string, unknown> = { text: args.text, project: args.project, source: args.source };
 
   try {
     const response = await fetch(`http://localhost:${args.port}/api/observations`, {

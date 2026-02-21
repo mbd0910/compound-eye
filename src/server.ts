@@ -29,11 +29,8 @@ function formatDate(iso: string): string {
 function buildExportMarkdown(observations: Observation[]): string {
   const lines: string[] = ["## Compound Eye \u2014 Engineering Observations", ""];
 
-  // Determine grouping strategy
+  // Group by project if all observations have one, otherwise flat list
   const allHaveProject = observations.every((o) => o.project !== null);
-  const allHaveTags = observations.every(
-    (o) => o.tags !== null && JSON.parse(o.tags).length > 0
-  );
 
   if (allHaveProject) {
     const groups = new Map<string, Observation[]>();
@@ -44,21 +41,6 @@ function buildExportMarkdown(observations: Observation[]): string {
     }
     for (const [project, items] of groups) {
       lines.push(`### ${project}`);
-      for (const obs of items) {
-        lines.push(formatObservationLine(obs));
-      }
-      lines.push("");
-    }
-  } else if (allHaveTags) {
-    const groups = new Map<string, Observation[]>();
-    for (const obs of observations) {
-      const tags: string[] = JSON.parse(obs.tags!);
-      const key = tags[0];
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(obs);
-    }
-    for (const [tag, items] of groups) {
-      lines.push(`### ${tag}`);
       for (const obs of items) {
         lines.push(formatObservationLine(obs));
       }
@@ -102,10 +84,10 @@ export function createApp(db: Database): {
       return c.json({ error: "text is required" }, 400);
     }
 
-    const tags =
-      Array.isArray(body.tags) && body.tags.every((t: unknown) => typeof t === "string")
-        ? body.tags
-        : null;
+    const source =
+      typeof body.source === "string" && body.source.trim() !== ""
+        ? body.source.trim()
+        : "human";
 
     const project =
       typeof body.project === "string" && body.project.trim() !== ""
@@ -118,7 +100,7 @@ export function createApp(db: Database): {
 
     const observation = createObservation(db, {
       text: body.text.trim(),
-      tags,
+      source,
       project,
     });
 
@@ -128,14 +110,14 @@ export function createApp(db: Database): {
   // List observations
   app.get("/api/observations", (c) => {
     const status = c.req.query("status") || null;
-    const tag = c.req.query("tag") || null;
+    const source = c.req.query("source") || null;
     const project = c.req.query("project") || null;
 
     if (status && !isValidStatus(status)) {
       return c.json({ error: "Invalid status" }, 400);
     }
 
-    const filters: ObservationFilters = { status, tag, project };
+    const filters: ObservationFilters = { status, source, project };
     const observations = listObservations(db, filters);
     return c.json(observations);
   });
@@ -153,7 +135,7 @@ export function createApp(db: Database): {
 
     const updates = {
       text: typeof body.text === "string" ? body.text.trim() : null,
-      tags: Array.isArray(body.tags) ? body.tags : null,
+      source: typeof body.source === "string" ? body.source.trim() : null,
       status: typeof body.status === "string" ? body.status : null,
       project: typeof body.project === "string" ? body.project.trim() : null,
     };
