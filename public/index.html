@@ -79,8 +79,26 @@
       flex: 3;
     }
 
-    #capture-tags, #capture-project {
+    #capture-tags {
       flex: 1;
+    }
+
+    #capture-project {
+      flex: 1;
+      font-family: var(--font-mono);
+      font-size: 14px;
+      padding: 8px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+
+    #capture-project:focus {
+      border-color: var(--accent);
     }
 
     #capture-form button[type="submit"] {
@@ -270,6 +288,106 @@
       font-size: 13px;
     }
 
+    /* Manage projects */
+    #manage-projects {
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+
+    #manage-projects summary {
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 8px 12px;
+      user-select: none;
+    }
+
+    #manage-projects-inner {
+      padding: 8px 12px 12px;
+    }
+
+    #scan-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    #scan-path {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 6px 10px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      outline: none;
+      flex: 1;
+    }
+
+    #scan-path:focus {
+      border-color: var(--accent);
+    }
+
+    #scan-path::placeholder {
+      color: var(--text-dim);
+    }
+
+    .manage-btn {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 6px 12px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .manage-btn:hover {
+      border-color: var(--accent);
+    }
+
+    #scan-candidates label {
+      display: block;
+      font-size: 12px;
+      padding: 4px 0;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    #scan-candidates input[type="checkbox"] {
+      accent-color: var(--accent);
+      margin-right: 6px;
+    }
+
+    .project-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      font-size: 12px;
+    }
+
+    .project-delete {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0 4px;
+    }
+
+    .project-delete:hover {
+      color: #f85149;
+    }
+
+    #scan-status {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
     /* Action bar */
     #action-bar {
       position: fixed;
@@ -320,7 +438,9 @@
     <form id="capture-form">
       <input id="capture-text" type="text" placeholder="what did you observe?" autofocus />
       <input id="capture-tags" type="text" placeholder="tags" />
-      <input id="capture-project" type="text" placeholder="project" />
+      <select id="capture-project" required>
+        <option value="" disabled selected>project</option>
+      </select>
       <button type="submit">capture</button>
     </form>
     <div id="capture-flash"></div>
@@ -334,8 +454,32 @@
         <option value="automated">automated</option>
       </select>
       <input id="filter-tag" type="text" placeholder="filter by tag" />
-      <input id="filter-project" type="text" placeholder="filter by project" />
+      <select id="filter-project">
+        <option value="">all projects</option>
+      </select>
     </div>
+
+    <details id="manage-projects">
+      <summary>manage projects</summary>
+      <div id="manage-projects-inner">
+        <div id="scan-row">
+          <input id="scan-path" type="text" placeholder="path to scan for git repos (e.g. ~/code)" />
+          <button id="scan-btn" class="manage-btn">scan</button>
+        </div>
+        <div id="scan-results" style="display: none;">
+          <div id="scan-candidates"></div>
+          <div style="margin-top: 8px; display: flex; gap: 8px;">
+            <button id="register-selected-btn" class="manage-btn">register selected</button>
+            <button id="select-all-btn" class="manage-btn">select all</button>
+          </div>
+        </div>
+        <div id="scan-status"></div>
+        <div id="project-list-section">
+          <div style="font-size: 12px; color: var(--text-muted); margin: 12px 0 8px;">registered projects</div>
+          <div id="project-list"></div>
+        </div>
+      </div>
+    </details>
 
     <div id="observation-list"></div>
     <div id="empty-state" style="display: none;">No observations yet. Start typing above.</div>
@@ -351,6 +495,7 @@
       const STATUS_ORDER = ["observed", "pattern_confirmed", "solution_designed", "automated"];
 
       let observations = [];
+      let projects = [];
       let selectedIds = new Set();
       let filterDebounce = null;
 
@@ -392,7 +537,7 @@
         const params = new URLSearchParams();
         if (filterStatus.value) params.set("status", filterStatus.value);
         if (filterTag.value.trim()) params.set("tag", filterTag.value.trim());
-        if (filterProject.value.trim()) params.set("project", filterProject.value.trim());
+        if (filterProject.value) params.set("project", filterProject.value);
         return params.toString();
       }
 
@@ -474,7 +619,7 @@
 
         const tagsRaw = captureTags.value.trim();
         const tags = tagsRaw ? tagsRaw.split(",").map(t => t.trim()).filter(Boolean) : null;
-        const project = captureProject.value.trim() || null;
+        const project = captureProject.value || null;
 
         const body = { text };
         if (tags && tags.length > 0) body.tags = tags;
@@ -580,10 +725,160 @@
       }
 
       filterTag.addEventListener("input", debouncedFetch);
-      filterProject.addEventListener("input", debouncedFetch);
+      filterProject.addEventListener("change", fetchObservations);
+
+      // --- Project management ---
+
+      const scanBtn = document.getElementById("scan-btn");
+      const scanPathInput = document.getElementById("scan-path");
+      const scanResults = document.getElementById("scan-results");
+      const scanCandidates = document.getElementById("scan-candidates");
+      const scanStatus = document.getElementById("scan-status");
+      const registerSelectedBtn = document.getElementById("register-selected-btn");
+      const selectAllBtn = document.getElementById("select-all-btn");
+      const projectListEl = document.getElementById("project-list");
+
+      async function fetchProjects() {
+        try {
+          const res = await fetch("/api/projects");
+          projects = await res.json();
+        } catch (err) {
+          console.error("Failed to fetch projects:", err);
+          projects = [];
+        }
+        populateProjectSelects();
+        renderProjectList();
+      }
+
+      function populateProjectSelects() {
+        const currentCapture = captureProject.value;
+        captureProject.innerHTML = '<option value="" disabled>project</option>';
+        for (const p of projects) {
+          const opt = document.createElement("option");
+          opt.value = p.name;
+          opt.textContent = p.name;
+          captureProject.appendChild(opt);
+        }
+        if (currentCapture && projects.some(p => p.name === currentCapture)) {
+          captureProject.value = currentCapture;
+        } else {
+          captureProject.selectedIndex = 0;
+        }
+
+        const currentFilter = filterProject.value;
+        filterProject.innerHTML = '<option value="">all projects</option>';
+        for (const p of projects) {
+          const opt = document.createElement("option");
+          opt.value = p.name;
+          opt.textContent = p.name;
+          filterProject.appendChild(opt);
+        }
+        filterProject.value = currentFilter;
+      }
+
+      function renderProjectList() {
+        if (projects.length === 0) {
+          projectListEl.innerHTML = '<div style="color: var(--text-dim); font-size: 11px;">no projects registered</div>';
+          return;
+        }
+        projectListEl.innerHTML = projects.map(p =>
+          '<div class="project-item">' +
+            '<span>' + esc(p.name) + '</span>' +
+            '<button class="project-delete" data-project-id="' + p.id + '" title="delete">\u00d7</button>' +
+          '</div>'
+        ).join("");
+      }
+
+      scanBtn.addEventListener("click", async () => {
+        const path = scanPathInput.value.trim();
+        if (!path) return;
+
+        scanStatus.textContent = "scanning\u2026";
+        scanResults.style.display = "none";
+
+        try {
+          const res = await fetch("/api/projects/scan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path }),
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            scanStatus.textContent = "error: " + (data.error || "scan failed");
+            return;
+          }
+
+          if (data.candidates.length === 0) {
+            scanStatus.textContent = "no GitHub repos found";
+            return;
+          }
+
+          const existingNames = new Set(projects.map(p => p.name));
+          const newCandidates = data.candidates.filter(c => !existingNames.has(c));
+
+          if (newCandidates.length === 0) {
+            scanStatus.textContent = "all " + data.candidates.length + " found repos are already registered";
+            return;
+          }
+
+          scanCandidates.innerHTML = newCandidates.map(name =>
+            '<label><input type="checkbox" value="' + esc(name) + '" checked /> ' + esc(name) + '</label>'
+          ).join("");
+
+          scanStatus.textContent = newCandidates.length + " new repo(s) found" +
+            (data.candidates.length > newCandidates.length
+              ? " (" + (data.candidates.length - newCandidates.length) + " already registered)"
+              : "");
+          scanResults.style.display = "block";
+        } catch (err) {
+          scanStatus.textContent = "error: could not connect";
+        }
+      });
+
+      selectAllBtn.addEventListener("click", () => {
+        scanCandidates.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          cb.checked = true;
+        });
+      });
+
+      registerSelectedBtn.addEventListener("click", async () => {
+        const checked = scanCandidates.querySelectorAll('input[type="checkbox"]:checked');
+        const names = Array.from(checked).map(cb => cb.value);
+        if (names.length === 0) return;
+
+        try {
+          const res = await fetch("/api/projects", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ names }),
+          });
+
+          if (res.ok) {
+            scanResults.style.display = "none";
+            scanStatus.textContent = names.length + " project(s) registered";
+            await fetchProjects();
+          }
+        } catch (err) {
+          scanStatus.textContent = "error registering projects";
+        }
+      });
+
+      projectListEl.addEventListener("click", async (e) => {
+        const btn = e.target.closest(".project-delete");
+        if (!btn) return;
+        const id = parseInt(btn.dataset.projectId, 10);
+
+        try {
+          await fetch("/api/projects/" + id, { method: "DELETE" });
+          await fetchProjects();
+        } catch (err) {
+          console.error("Failed to delete project:", err);
+        }
+      });
 
       // Initial load
-      fetchObservations();
+      fetchProjects().then(() => fetchObservations());
     })();
   </script>
 </body>

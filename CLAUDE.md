@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Compound Eye is a capture-and-review tool for engineering observations — a practice called Compound Engineering where engineers systematically record patterns, friction points, and improvement opportunities across their projects, then advance them through stages from initial observation to automated solution.
+
 ## Commands
 
 ```bash
@@ -10,7 +12,8 @@ bun run dev                                                  # Dev mode with hot
 bun run dev -- --port 8080                                   # Dev mode on custom port
 bun run start                                                # Production start
 bunx tsc --noEmit                                            # Type-check (no lint or test suite yet)
-bun run src/cli.ts add "observation text" --tag x --project y  # CLI capture
+bun run src/cli.ts add "observation text" --tag x --project o/r  # CLI capture
+bun run src/cli.ts scan ~/code                                   # Scan & register projects
 ```
 
 ## Architecture
@@ -32,6 +35,10 @@ The CLI is a standalone HTTP client — it does not import internal modules or a
 | PATCH | `/api/observations/:id` | Update observation fields |
 | DELETE | `/api/observations/:id` | Delete observation |
 | POST | `/api/observations/export` | Export as markdown (`{ids: number[]}`) |
+| GET | `/api/projects` | List all registered projects |
+| POST | `/api/projects` | Create project(s) (`{name}` or `{names: string[]}`) |
+| DELETE | `/api/projects/:id` | Delete project |
+| POST | `/api/projects/scan` | Scan directory for git repos (`{path}`) |
 
 - **`src/db.ts`** — Data layer. All types (`Observation`, `ObservationCreate`, etc.) and SQLite queries. Uses `bun:sqlite` synchronous API. Tags stored as JSON arrays in a TEXT column, queried with `json_each()`. Every function takes `db: Database` as its first parameter.
 
@@ -39,7 +46,9 @@ The CLI is a standalone HTTP client — it does not import internal modules or a
 
 - **`src/index.ts`** — Entry point. Parses `--port`, initializes database, starts server, handles SIGINT/SIGTERM.
 
-- **`src/cli.ts`** — Minimal CLI for quick capture. Parses args, POSTs to the local API.
+- **`src/scan.ts`** — Filesystem scanner. Walks directories for `.git` repos, extracts `owner/repo` from GitHub remotes via `git remote get-url origin`. Used by the scan API endpoint.
+
+- **`src/cli.ts`** — CLI for quick capture and project scanning. Parses args, calls the local API.
 
 - **`public/index.html`** — Single-file frontend with inline CSS/JS. Dark theme, no framework, no build step, no CDN dependencies.
 
@@ -59,6 +68,6 @@ See [docs/schema.md](docs/schema.md) for the full ER diagram.
 
 Observations table with statuses: `observed` → `pattern_confirmed` → `solution_designed` → `automated`.
 
-Tags are JSON arrays stored in a TEXT column. Projects are optional free-text strings.
+Tags are JSON arrays stored in a TEXT column. Projects use `owner/repo` format and are registered in a separate `projects` table (auto-registered when used via API/CLI).
 
 SQLite database file (`compound-eye.db`) is created in the working directory with WAL mode enabled.

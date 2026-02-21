@@ -7,8 +7,13 @@ import {
   deleteObservation,
   getObservationsByIds,
   isValidStatus,
+  listProjects,
+  createProject,
+  createProjectsBulk,
+  deleteProject,
 } from "./db.ts";
 import type { Observation, ObservationFilters } from "./db.ts";
+import { scanForGitRepos } from "./scan.ts";
 
 const STATUS_ORDER = [
   "observed",
@@ -107,6 +112,10 @@ export function createApp(db: Database): {
         ? body.project.trim()
         : null;
 
+    if (!project) {
+      return c.json({ error: "project is required" }, 400);
+    }
+
     const observation = createObservation(db, {
       text: body.text.trim(),
       tags,
@@ -185,6 +194,60 @@ export function createApp(db: Database): {
 
     const markdown = buildExportMarkdown(observations);
     return c.json({ markdown });
+  });
+
+  // --- Project routes ---
+
+  app.get("/api/projects", (c) => {
+    const projects = listProjects(db);
+    return c.json(projects);
+  });
+
+  app.post("/api/projects", async (c) => {
+    const body = await c.req.json();
+
+    if (typeof body.name === "string" && body.name.trim()) {
+      const project = createProject(db, { name: body.name.trim() });
+      return c.json(project, 201);
+    }
+
+    if (Array.isArray(body.names) && body.names.length > 0) {
+      const validNames = body.names
+        .filter((n: unknown) => typeof n === "string" && (n as string).trim() !== "")
+        .map((n: string) => n.trim());
+      if (validNames.length === 0) {
+        return c.json({ error: "No valid names provided" }, 400);
+      }
+      const projects = createProjectsBulk(db, validNames);
+      return c.json(projects, 201);
+    }
+
+    return c.json({ error: "name (string) or names (string[]) required" }, 400);
+  });
+
+  app.delete("/api/projects/:id", (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+
+    const deleted = deleteProject(db, id);
+    if (!deleted) return c.json({ error: "Not found" }, 404);
+
+    return c.body(null, 204);
+  });
+
+  app.post("/api/projects/scan", async (c) => {
+    const body = await c.req.json();
+
+    if (typeof body.path !== "string" || body.path.trim() === "") {
+      return c.json({ error: "path is required" }, 400);
+    }
+
+    try {
+      const candidates = await scanForGitRepos(body.path.trim());
+      return c.json({ candidates });
+    } catch (err) {
+      return c.json({ error: "Scan failed: " + String(err) }, 500);
+    }
   });
 
   function start(port: number): { stop: () => void } {

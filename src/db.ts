@@ -29,6 +29,16 @@ export interface ObservationFilters {
   project: string | null;
 }
 
+export interface Project {
+  id: number;
+  name: string;
+  created_at: string;
+}
+
+export interface ProjectCreate {
+  name: string;
+}
+
 const VALID_STATUSES = [
   "observed",
   "pattern_confirmed",
@@ -54,6 +64,13 @@ export function initDatabase(): Database {
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
     )
   `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+    )
+  `);
   return db;
 }
 
@@ -61,6 +78,9 @@ export function createObservation(
   db: Database,
   data: ObservationCreate
 ): Observation {
+  if (data.project) {
+    ensureProject(db, data.project);
+  }
   const tags = data.tags ? JSON.stringify(data.tags) : null;
   const stmt = db.prepare(`
     INSERT INTO observations (text, tags, project)
@@ -153,4 +173,36 @@ export function getObservationsByIds(
   const sql = `SELECT * FROM observations WHERE id IN (${placeholders}) ORDER BY created_at DESC`;
   const stmt = db.prepare(sql);
   return stmt.all(...ids) as Observation[];
+}
+
+// --- Project functions ---
+
+export function ensureProject(db: Database, name: string): void {
+  db.prepare("INSERT OR IGNORE INTO projects (name) VALUES (?)").run(name);
+}
+
+export function createProject(db: Database, data: ProjectCreate): Project | null {
+  const stmt = db.prepare("INSERT OR IGNORE INTO projects (name) VALUES (?) RETURNING *");
+  const row = stmt.get(data.name) as Project | null;
+  if (row) return row;
+  return db.prepare("SELECT * FROM projects WHERE name = ?").get(data.name) as Project;
+}
+
+export function createProjectsBulk(db: Database, names: string[]): Project[] {
+  const stmt = db.prepare("INSERT OR IGNORE INTO projects (name) VALUES (?) RETURNING *");
+  const results: Project[] = [];
+  for (const name of names) {
+    const row = stmt.get(name) as Project | undefined;
+    if (row) results.push(row);
+  }
+  return results;
+}
+
+export function listProjects(db: Database): Project[] {
+  return db.prepare("SELECT * FROM projects ORDER BY name ASC").all() as Project[];
+}
+
+export function deleteProject(db: Database, id: number): boolean {
+  const result = db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+  return result.changes > 0;
 }

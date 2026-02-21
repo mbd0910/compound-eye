@@ -6,15 +6,23 @@ compound-eye CLI - Quick observation capture
 
 Usage:
   bun run src/cli.ts add "observation text" [options]
+  bun run src/cli.ts scan <path>
 
-Options:
+Commands:
+  add     Capture an observation
+  scan    Scan directory for git repos and register as projects
+
+Options (add):
   --tag <value>      Add a tag (can be used multiple times)
-  --project <value>  Set the project
+  --project <value>  Set the project (owner/repo format)
+  --port <number>    Server port (default: 4141)
+
+Options (scan):
   --port <number>    Server port (default: 4141)
 
 Example:
-  bun run src/cli.ts add "flaky test retries always happen in CI" --tag testing --project motd-analyser
-  bun run src/cli.ts add "manual deploy steps could be scripted" --tag automation --tag deploys
+  bun run src/cli.ts add "flaky test retries always happen in CI" --tag testing --project anthropics/claude-code
+  bun run src/cli.ts scan ~/code
 `.trim());
 }
 
@@ -72,26 +80,20 @@ function parseArgs(args: string[]): ParsedArgs {
   return { command, text, tags, project, port };
 }
 
-async function main(): Promise<void> {
-  const args = parseArgs(Bun.argv.slice(2));
-
-  if (args.command !== "add") {
-    if (args.command) {
-      console.error(`Unknown command: ${args.command}`);
-    }
-    printUsage();
-    process.exit(1);
-  }
-
+async function handleAdd(args: ParsedArgs): Promise<void> {
   if (!args.text) {
     console.error("Error: observation text is required");
     printUsage();
     process.exit(1);
   }
 
-  const body: Record<string, unknown> = { text: args.text };
+  if (!args.project) {
+    console.error("Error: --project is required");
+    process.exit(1);
+  }
+
+  const body: Record<string, unknown> = { text: args.text, project: args.project };
   if (args.tags.length > 0) body.tags = args.tags;
-  if (args.project) body.project = args.project;
 
   try {
     const response = await fetch(`http://localhost:${args.port}/api/observations`, {
@@ -116,6 +118,81 @@ async function main(): Promise<void> {
     } else {
       console.error(`Error: ${err}`);
     }
+    process.exit(1);
+  }
+}
+
+async function handleScan(args: ParsedArgs): Promise<void> {
+  if (!args.text) {
+    console.error("Error: scan path is required");
+    console.error("Usage: bun run src/cli.ts scan <path>");
+    process.exit(1);
+  }
+
+  const scanPath = args.text;
+
+  try {
+    console.log(`Scanning ${scanPath} for git repos...`);
+    const scanRes = await fetch(`http://localhost:${args.port}/api/projects/scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: scanPath }),
+    });
+
+    if (!scanRes.ok) {
+      const error = await scanRes.json();
+      console.error(`Error: ${error.error || scanRes.statusText}`);
+      process.exit(1);
+    }
+
+    const { candidates } = (await scanRes.json()) as { candidates: string[] };
+
+    if (candidates.length === 0) {
+      console.log("No GitHub repos found.");
+      return;
+    }
+
+    console.log(`Found ${candidates.length} repo(s):`);
+    for (const name of candidates) {
+      console.log(`  ${name}`);
+    }
+
+    const registerRes = await fetch(`http://localhost:${args.port}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ names: candidates }),
+    });
+
+    if (registerRes.ok) {
+      const registered = (await registerRes.json()) as unknown[];
+      console.log(
+        `Registered ${Array.isArray(registered) ? registered.length : 0} new project(s).`
+      );
+    }
+  } catch (err) {
+    if (err instanceof TypeError && String(err).includes("fetch")) {
+      console.error(
+        `Could not connect to compound-eye on port ${args.port}. Is the server running?`
+      );
+    } else {
+      console.error(`Error: ${err}`);
+    }
+    process.exit(1);
+  }
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(Bun.argv.slice(2));
+
+  if (args.command === "add") {
+    await handleAdd(args);
+  } else if (args.command === "scan") {
+    await handleScan(args);
+  } else {
+    if (args.command) {
+      console.error(`Unknown command: ${args.command}`);
+    }
+    printUsage();
     process.exit(1);
   }
 }
