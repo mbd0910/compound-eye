@@ -9,10 +9,9 @@ bun install                                                  # Install dependenc
 bun run dev                                                  # Dev mode with hot reload (port 4141)
 bun run dev -- --port 8080                                   # Dev mode on custom port
 bun run start                                                # Production start
+bunx tsc --noEmit                                            # Type-check (no lint or test suite yet)
 bun run src/cli.ts add "observation text" --tag x --project y  # CLI capture
 ```
-
-No test suite yet.
 
 ## Architecture
 
@@ -22,6 +21,17 @@ Two data paths, both through the HTTP API:
 - **CLI**: `cli.ts → fetch() → server.ts → db.ts → SQLite`
 
 The CLI is a standalone HTTP client — it does not import internal modules or access the database directly. The server must be running for CLI capture to work.
+
+### API routes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Serves `public/index.html` |
+| POST | `/api/observations` | Create observation (`{text, tags?, project?}`) |
+| GET | `/api/observations` | List observations (query: `?status=&tag=&project=`) |
+| PATCH | `/api/observations/:id` | Update observation fields |
+| DELETE | `/api/observations/:id` | Delete observation |
+| POST | `/api/observations/export` | Export as markdown (`{ids: number[]}`) |
 
 - **`src/db.ts`** — Data layer. All types (`Observation`, `ObservationCreate`, etc.) and SQLite queries. Uses `bun:sqlite` synchronous API. Tags stored as JSON arrays in a TEXT column, queried with `json_each()`. Every function takes `db: Database` as its first parameter.
 
@@ -48,3 +58,5 @@ The CLI is a standalone HTTP client — it does not import internal modules or a
 Observations table with statuses: `observed` → `pattern_confirmed` → `solution_designed` → `automated`.
 
 Tags are JSON arrays stored in a TEXT column. Projects are optional free-text strings.
+
+SQLite database file (`compound-eye.db`) is created in the working directory with WAL mode enabled.
