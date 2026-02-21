@@ -83,6 +83,24 @@
       flex: 1;
     }
 
+    #capture-form button[type="submit"] {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      padding: 8px 16px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    #capture-form button[type="submit"]:hover {
+      opacity: 0.9;
+    }
+
     #capture-flash {
       font-size: 12px;
       color: var(--status-solution_designed);
@@ -303,6 +321,7 @@
       <input id="capture-text" type="text" placeholder="what did you observe?" autofocus />
       <input id="capture-tags" type="text" placeholder="tags" />
       <input id="capture-project" type="text" placeholder="project" />
+      <button type="submit">capture</button>
     </form>
     <div id="capture-flash"></div>
 
