@@ -55,6 +55,8 @@ The CLI is a standalone HTTP client — it does not import internal modules or a
 
 ## Data model
 
+See [docs/schema.md](docs/schema.md) for the full ER diagram.
+
 Observations table with statuses: `observed` → `pattern_confirmed` → `solution_designed` → `automated`.
 
 Tags are JSON arrays stored in a TEXT column. Projects are optional free-text strings.
