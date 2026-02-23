@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Compound Eye is a capture-and-review tool for engineering observations — a practice called Compound Engineering where engineers systematically record patterns, friction points, and improvement opportunities across their projects, then advance them through stages from initial observation to automated solution.
+Compound Eye is a capture-and-review tool for engineering observations — a practice called Compound Engineering where engineers systematically record patterns, friction points, and improvement opportunities across their projects. Observations accumulate an action log over time as agents and humans work to address them.
 
 ## Commands
 
@@ -32,18 +32,21 @@ The CLI is a standalone HTTP client — it does not import internal modules or a
 |--------|------|-------------|
 | GET | `/` | Serves `public/index.html` |
 | POST | `/api/observations` | Create observation (`{text, source?, project}`) |
-| GET | `/api/observations` | List observations (query: `?status=&source=&project=`) |
+| GET | `/api/observations` | List observations (query: `?disposition=&source=&project=`) |
 | PATCH | `/api/observations/:id` | Update observation fields |
 | DELETE | `/api/observations/:id` | Delete observation |
+| GET | `/api/observations/:id/actions` | Get actions linked to an observation |
 | POST | `/api/observations/export` | Export as markdown (`{ids: number[]}`) |
+| POST | `/api/actions` | Create action (`{description, source?, reference?, project?, observation_ids}`) |
+| GET | `/api/actions` | List actions (query: `?project=&observation_id=`) |
 | GET | `/api/projects` | List all registered projects |
 | POST | `/api/projects` | Create project(s) (`{name}` or `{names: string[]}`) |
 | DELETE | `/api/projects/:id` | Delete project |
 | POST | `/api/projects/scan` | Scan directory for git repos (`{path}`) |
 
-- **`src/db.ts`** — Data layer. All types (`Observation`, `ObservationCreate`, etc.) and SQLite queries. Uses `bun:sqlite` synchronous API. Every function takes `db: Database` as its first parameter. Observations have a `source` field (default `'human'`) to track who originated the observation.
+- **`src/db.ts`** — Data layer. All types (`Observation`, `ObservationCreate`, `Action`, `ActionCreate`, etc.) and SQLite queries. Uses `bun:sqlite` synchronous API. Every function takes `db: Database` as its first parameter. Observations have a `source` field (default `'human'`) to track who originated the observation.
 
-- **`src/server.ts`** — Hono app with CRUD routes for observations plus an export endpoint. `createApp(db)` returns `{ app, start }`. Static frontend served via `Bun.file()`.
+- **`src/server.ts`** — Hono app with CRUD routes for observations, actions, and an export endpoint. `createApp(db)` returns `{ app, start }`. Static frontend served via `Bun.file()`.
 
 - **`src/index.ts`** — Entry point. Parses `--port`, initializes database, starts server, handles SIGINT/SIGTERM.
 
@@ -67,7 +70,9 @@ The CLI is a standalone HTTP client — it does not import internal modules or a
 
 See [docs/schema.md](docs/schema.md) for the full ER diagram.
 
-Observations table with statuses: `observed` → `pattern_confirmed` → `solution_designed` → `automated`.
+Observations have a `disposition` field: `open` (default), `addressed`, `wont_fix`, or `deferred`. This represents human judgment on whether an observation needs attention, not a process step.
+
+Actions are an append-only log of what was done about observations. Each action has a description, source, optional reference (URL/commit/identifier), and links to one or more observations via the `action_observations` junction table. Actions are created by agents in other repos calling back to the compound-eye API.
 
 Each observation has a `source` field (default `'human'`) indicating who originated it — `'human'` for engineer observations, or an agent identifier (e.g. `'claude'`) for AI-originated feedback. Tags column exists but is reserved for future auto-classification. Projects use `owner/repo` format and are registered in a separate `projects` table (auto-registered when used via API/CLI).
 

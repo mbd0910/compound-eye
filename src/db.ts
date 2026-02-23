@@ -5,7 +5,7 @@ export interface Observation {
   text: string;
   tags: string | null;
   source: string;
-  status: string;
+  disposition: string;
   project: string | null;
   created_at: string;
   updated_at: string;
@@ -20,12 +20,12 @@ export interface ObservationCreate {
 export interface ObservationUpdate {
   text: string | null;
   source: string | null;
-  status: string | null;
+  disposition: string | null;
   project: string | null;
 }
 
 export interface ObservationFilters {
-  status: string | null;
+  disposition: string | null;
   source: string | null;
   project: string | null;
 }
@@ -40,15 +40,59 @@ export interface ProjectCreate {
   name: string;
 }
 
-const VALID_STATUSES = [
-  "observed",
-  "pattern_confirmed",
-  "solution_designed",
-  "automated",
+export interface Action {
+  id: number;
+  description: string;
+  source: string;
+  reference: string | null;
+  project: string | null;
+  created_at: string;
+}
+
+export interface ActionCreate {
+  description: string;
+  source?: string;
+  reference?: string;
+  project?: string;
+  observation_ids: number[];
+}
+
+export interface ActionWithObservations extends Action {
+  observation_ids: number[];
+}
+
+const VALID_DISPOSITIONS = [
+  "open",
+  "addressed",
+  "wont_fix",
+  "deferred",
 ] as const;
 
-export function isValidStatus(s: string): boolean {
-  return (VALID_STATUSES as readonly string[]).includes(s);
+export function isValidDisposition(s: string): boolean {
+  return (VALID_DISPOSITIONS as readonly string[]).includes(s);
+}
+
+function migrateStatusToDisposition(db: Database): void {
+  const columns = db.prepare("PRAGMA table_info(observations)").all() as { name: string }[];
+  const hasStatus = columns.some((col) => col.name === "status");
+  if (!hasStatus) return;
+
+  db.run("BEGIN TRANSACTION");
+  try {
+    db.run("ALTER TABLE observations RENAME COLUMN status TO disposition");
+    db.run(`
+      UPDATE observations SET disposition = 'open'
+      WHERE disposition IN ('observed', 'pattern_confirmed', 'solution_designed')
+    `);
+    db.run(`
+      UPDATE observations SET disposition = 'addressed'
+      WHERE disposition = 'automated'
+    `);
+    db.run("COMMIT");
+  } catch (err) {
+    db.run("ROLLBACK");
+    throw err;
+  }
 }
 
 export function initDatabase(): Database {
@@ -60,7 +104,7 @@ export function initDatabase(): Database {
       text TEXT NOT NULL,
       tags TEXT,
       source TEXT NOT NULL DEFAULT 'human',
-      status TEXT NOT NULL DEFAULT 'observed',
+      disposition TEXT NOT NULL DEFAULT 'open',
       project TEXT,
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
       updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -73,6 +117,26 @@ export function initDatabase(): Database {
       created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
     )
   `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      description TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'human',
+      reference TEXT,
+      project TEXT,
+      created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+    )
+  `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS action_observations (
+      action_id INTEGER NOT NULL REFERENCES actions(id) ON DELETE CASCADE,
+      observation_id INTEGER NOT NULL REFERENCES observations(id) ON DELETE CASCADE,
+      PRIMARY KEY (action_id, observation_id)
+    )
+  `);
+
+  migrateStatusToDisposition(db);
+
   return db;
 }
 
@@ -85,8 +149,8 @@ export function createObservation(
   }
   const source = data.source ?? "human";
   const stmt = db.prepare(`
-    INSERT INTO observations (text, source, project)
-    VALUES (?, ?, ?)
+    INSERT INTO observations (text, source, project, disposition)
+    VALUES (?, ?, ?, 'open')
     RETURNING *
   `);
   return stmt.get(data.text, source, data.project) as Observation;
@@ -99,9 +163,9 @@ export function listObservations(
   const conditions: string[] = [];
   const params: string[] = [];
 
-  if (filters?.status) {
-    conditions.push("status = ?");
-    params.push(filters.status);
+  if (filters?.disposition) {
+    conditions.push("disposition = ?");
+    params.push(filters.disposition);
   }
 
   if (filters?.source) {
@@ -138,9 +202,9 @@ export function updateObservation(
     params.push(updates.source);
   }
 
-  if (updates.status !== null) {
-    sets.push("status = ?");
-    params.push(updates.status);
+  if (updates.disposition !== null) {
+    sets.push("disposition = ?");
+    params.push(updates.disposition);
   }
 
   if (updates.project !== null) {
@@ -205,4 +269,71 @@ export function listProjects(db: Database): Project[] {
 export function deleteProject(db: Database, id: number): boolean {
   const result = db.prepare("DELETE FROM projects WHERE id = ?").run(id);
   return result.changes > 0;
+}
+
+// --- Action functions ---
+
+export function createAction(
+  db: Database,
+  data: ActionCreate
+): ActionWithObservations {
+  const source = data.source ?? "human";
+  const reference = data.reference ?? null;
+  const project = data.project ?? null;
+
+  const action = db.prepare(`
+    INSERT INTO actions (description, source, reference, project)
+    VALUES (?, ?, ?, ?)
+    RETURNING *
+  `).get(data.description, source, reference, project) as Action;
+
+  const linkStmt = db.prepare(
+    "INSERT INTO action_observations (action_id, observation_id) VALUES (?, ?)"
+  );
+  for (const obsId of data.observation_ids) {
+    linkStmt.run(action.id, obsId);
+  }
+
+  return { ...action, observation_ids: data.observation_ids };
+}
+
+export function listActions(
+  db: Database,
+  filters?: { project?: string; observation_id?: number }
+): ActionWithObservations[] {
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (filters?.project) {
+    conditions.push("a.project = ?");
+    params.push(filters.project);
+  }
+
+  if (filters?.observation_id) {
+    conditions.push("a.id IN (SELECT action_id FROM action_observations WHERE observation_id = ?)");
+    params.push(filters.observation_id);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  const sql = `SELECT a.* FROM actions a ${where} ORDER BY a.created_at DESC`;
+  const actions = db.prepare(sql).all(...params) as Action[];
+
+  return actions.map((action) => {
+    const links = db.prepare(
+      "SELECT observation_id FROM action_observations WHERE action_id = ?"
+    ).all(action.id) as { observation_id: number }[];
+    return { ...action, observation_ids: links.map((l) => l.observation_id) };
+  });
+}
+
+export function getActionsForObservation(
+  db: Database,
+  observationId: number
+): Action[] {
+  return db.prepare(`
+    SELECT a.* FROM actions a
+    JOIN action_observations ao ON ao.action_id = a.id
+    WHERE ao.observation_id = ?
+    ORDER BY a.created_at DESC
+  `).all(observationId) as Action[];
 }

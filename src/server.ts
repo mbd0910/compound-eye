@@ -6,20 +6,23 @@ import {
   updateObservation,
   deleteObservation,
   getObservationsByIds,
-  isValidStatus,
+  isValidDisposition,
   listProjects,
   createProject,
   createProjectsBulk,
   deleteProject,
+  createAction,
+  listActions,
+  getActionsForObservation,
 } from "./db.ts";
 import type { Observation, ObservationFilters } from "./db.ts";
 import { scanForGitRepos } from "./scan.ts";
 
-const STATUS_ORDER = [
-  "observed",
-  "pattern_confirmed",
-  "solution_designed",
-  "automated",
+const DISPOSITION_ORDER = [
+  "open",
+  "addressed",
+  "wont_fix",
+  "deferred",
 ];
 
 function formatDate(iso: string): string {
@@ -58,8 +61,8 @@ function buildExportMarkdown(observations: Observation[]): string {
 }
 
 function formatObservationLine(obs: Observation): string {
-  const status = STATUS_ORDER.includes(obs.status) ? obs.status : obs.status;
-  return `- [${status}] ${obs.text} (first observed: ${formatDate(obs.created_at)}, updated: ${formatDate(obs.updated_at)})`;
+  const disposition = DISPOSITION_ORDER.includes(obs.disposition) ? obs.disposition : obs.disposition;
+  return `- [${disposition}] ${obs.text} (first observed: ${formatDate(obs.created_at)}, updated: ${formatDate(obs.updated_at)})`;
 }
 
 export function createApp(db: Database): {
@@ -109,15 +112,15 @@ export function createApp(db: Database): {
 
   // List observations
   app.get("/api/observations", (c) => {
-    const status = c.req.query("status") || null;
+    const disposition = c.req.query("disposition") || null;
     const source = c.req.query("source") || null;
     const project = c.req.query("project") || null;
 
-    if (status && !isValidStatus(status)) {
-      return c.json({ error: "Invalid status" }, 400);
+    if (disposition && !isValidDisposition(disposition)) {
+      return c.json({ error: "Invalid disposition" }, 400);
     }
 
-    const filters: ObservationFilters = { status, source, project };
+    const filters: ObservationFilters = { disposition, source, project };
     const observations = listObservations(db, filters);
     return c.json(observations);
   });
@@ -129,14 +132,14 @@ export function createApp(db: Database): {
 
     const body = await c.req.json();
 
-    if (body.status && !isValidStatus(body.status)) {
-      return c.json({ error: "Invalid status" }, 400);
+    if (body.disposition && !isValidDisposition(body.disposition)) {
+      return c.json({ error: "Invalid disposition" }, 400);
     }
 
     const updates = {
       text: typeof body.text === "string" ? body.text.trim() : null,
       source: typeof body.source === "string" ? body.source.trim() : null,
-      status: typeof body.status === "string" ? body.status : null,
+      disposition: typeof body.disposition === "string" ? body.disposition : null,
       project: typeof body.project === "string" ? body.project.trim() : null,
     };
 
@@ -155,6 +158,15 @@ export function createApp(db: Database): {
     if (!deleted) return c.json({ error: "Not found" }, 404);
 
     return c.body(null, 204);
+  });
+
+  // Get actions for a specific observation
+  app.get("/api/observations/:id/actions", (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return c.json({ error: "Invalid id" }, 400);
+
+    const actions = getActionsForObservation(db, id);
+    return c.json(actions);
   });
 
   // Export observations as markdown
@@ -230,6 +242,47 @@ export function createApp(db: Database): {
     } catch (err) {
       return c.json({ error: "Scan failed: " + String(err) }, 500);
     }
+  });
+
+  // --- Action routes ---
+
+  app.post("/api/actions", async (c) => {
+    const body = await c.req.json();
+
+    if (!body.description || typeof body.description !== "string" || body.description.trim() === "") {
+      return c.json({ error: "description is required" }, 400);
+    }
+
+    if (!Array.isArray(body.observation_ids) || body.observation_ids.length === 0) {
+      return c.json({ error: "observation_ids must be a non-empty array" }, 400);
+    }
+
+    if (!body.observation_ids.every((id: unknown) => typeof id === "number")) {
+      return c.json({ error: "observation_ids must be numbers" }, 400);
+    }
+
+    const action = createAction(db, {
+      description: body.description.trim(),
+      source: typeof body.source === "string" ? body.source.trim() : undefined,
+      reference: typeof body.reference === "string" ? body.reference.trim() : undefined,
+      project: typeof body.project === "string" ? body.project.trim() : undefined,
+      observation_ids: body.observation_ids,
+    });
+
+    return c.json(action, 201);
+  });
+
+  app.get("/api/actions", (c) => {
+    const project = c.req.query("project") || undefined;
+    const observationIdStr = c.req.query("observation_id");
+    const observation_id = observationIdStr ? parseInt(observationIdStr, 10) : undefined;
+
+    if (observationIdStr && isNaN(observation_id!)) {
+      return c.json({ error: "Invalid observation_id" }, 400);
+    }
+
+    const actions = listActions(db, { project, observation_id });
+    return c.json(actions);
   });
 
   function start(port: number): { stop: () => void } {

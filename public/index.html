@@ -16,10 +16,10 @@
       --text-muted: #7d8590;
       --text-dim: #484f58;
       --accent: #58a6ff;
-      --status-observed: #7d8590;
-      --status-pattern_confirmed: #d29922;
-      --status-solution_designed: #3fb950;
-      --status-automated: #8957e5;
+      --disposition-open: #7d8590;
+      --disposition-addressed: #3fb950;
+      --disposition-wont_fix: #484f58;
+      --disposition-deferred: #d29922;
       --font-mono: "SF Mono", "Cascadia Code", "Fira Code", "JetBrains Mono", monospace;
     }
 
@@ -117,7 +117,7 @@
 
     #capture-flash {
       font-size: 12px;
-      color: var(--status-solution_designed);
+      color: var(--disposition-addressed);
       opacity: 0;
       transition: opacity 0.2s;
       margin-bottom: 8px;
@@ -187,7 +187,7 @@
       accent-color: var(--accent);
     }
 
-    .obs-status {
+    .obs-disposition {
       display: inline-block;
       padding: 2px 8px;
       border-radius: 12px;
@@ -199,30 +199,69 @@
       transition: opacity 0.15s;
       flex-shrink: 0;
       margin-top: 1px;
+      position: relative;
     }
 
-    .obs-status:hover {
+    .obs-disposition:hover {
       opacity: 0.8;
     }
 
-    .obs-status[data-status="observed"] {
-      background: var(--status-observed);
+    .obs-disposition[data-disposition="open"] {
+      background: var(--disposition-open);
       color: #fff;
     }
 
-    .obs-status[data-status="pattern_confirmed"] {
-      background: var(--status-pattern_confirmed);
+    .obs-disposition[data-disposition="addressed"] {
+      background: var(--disposition-addressed);
       color: #000;
     }
 
-    .obs-status[data-status="solution_designed"] {
-      background: var(--status-solution_designed);
+    .obs-disposition[data-disposition="wont_fix"] {
+      background: var(--disposition-wont_fix);
+      color: #999;
+    }
+
+    .obs-disposition[data-disposition="deferred"] {
+      background: var(--disposition-deferred);
       color: #000;
     }
 
-    .obs-status[data-status="automated"] {
-      background: var(--status-automated);
-      color: #fff;
+    /* Disposition picker */
+    .disposition-picker {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 4px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 0;
+      z-index: 10;
+      min-width: 120px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .disposition-picker-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      color: var(--text);
+      white-space: nowrap;
+    }
+
+    .disposition-picker-option:hover {
+      background: var(--border);
+    }
+
+    .disposition-picker-option .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
     }
 
     .obs-body {
@@ -249,10 +288,10 @@
       display: inline-block;
       padding: 1px 6px;
       background: var(--bg);
-      border: 1px solid var(--status-automated);
+      border: 1px solid var(--disposition-deferred);
       border-radius: 4px;
       font-size: 11px;
-      color: var(--status-automated);
+      color: var(--disposition-deferred);
     }
 
     .obs-project {
@@ -261,6 +300,64 @@
 
     .obs-time {
       color: var(--text-dim);
+    }
+
+    .obs-actions-toggle {
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    .obs-actions-toggle:hover {
+      color: var(--text-muted);
+    }
+
+    /* Action log */
+    .obs-action-log {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+
+    .action-item {
+      font-size: 11px;
+      padding: 4px 0;
+      color: var(--text-muted);
+    }
+
+    .action-item + .action-item {
+      border-top: 1px solid var(--border);
+    }
+
+    .action-description {
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+
+    .action-meta {
+      display: flex;
+      gap: 8px;
+      font-size: 10px;
+      color: var(--text-dim);
+    }
+
+    .action-reference a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .action-reference a:hover {
+      text-decoration: underline;
+    }
+
+    .action-empty {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-style: italic;
     }
 
     .obs-delete {
@@ -443,12 +540,12 @@
     <div id="capture-flash"></div>
 
     <div id="filters">
-      <select id="filter-status">
-        <option value="">all statuses</option>
-        <option value="observed">observed</option>
-        <option value="pattern_confirmed">pattern confirmed</option>
-        <option value="solution_designed">solution designed</option>
-        <option value="automated">automated</option>
+      <select id="filter-disposition">
+        <option value="">all dispositions</option>
+        <option value="open">open</option>
+        <option value="addressed">addressed</option>
+        <option value="wont_fix">won't fix</option>
+        <option value="deferred">deferred</option>
       </select>
       <select id="filter-source">
         <option value="">all sources</option>
@@ -493,17 +590,28 @@
 
   <script>
     (function () {
-      const STATUS_ORDER = ["observed", "pattern_confirmed", "solution_designed", "automated"];
+      const DISPOSITIONS = [
+        { value: "open", label: "open", color: "#7d8590" },
+        { value: "addressed", label: "addressed", color: "#3fb950" },
+        { value: "wont_fix", label: "won't fix", color: "#484f58" },
+        { value: "deferred", label: "deferred", color: "#d29922" },
+      ];
+
+      const DISPOSITION_LABELS = {};
+      for (const d of DISPOSITIONS) DISPOSITION_LABELS[d.value] = d.label;
 
       let observations = [];
       let projects = [];
       let selectedIds = new Set();
+      let openPicker = null;  // track open disposition picker
+      let expandedActions = new Set();  // track expanded action logs
+      let actionCache = {};  // cache fetched actions by observation id
 
       const captureForm = document.getElementById("capture-form");
       const captureText = document.getElementById("capture-text");
       const captureProject = document.getElementById("capture-project");
       const captureFlash = document.getElementById("capture-flash");
-      const filterStatus = document.getElementById("filter-status");
+      const filterDisposition = document.getElementById("filter-disposition");
       const filterSource = document.getElementById("filter-source");
       const filterProject = document.getElementById("filter-project");
       const observationList = document.getElementById("observation-list");
@@ -534,7 +642,7 @@
 
       function buildFilterParams() {
         const params = new URLSearchParams();
-        if (filterStatus.value) params.set("status", filterStatus.value);
+        if (filterDisposition.value) params.set("disposition", filterDisposition.value);
         if (filterSource.value) params.set("source", filterSource.value);
         if (filterProject.value) params.set("project", filterProject.value);
         return params.toString();
@@ -573,6 +681,7 @@
 
       function renderCard(obs) {
         const checked = selectedIds.has(obs.id) ? "checked" : "";
+        const dispositionLabel = DISPOSITION_LABELS[obs.disposition] || obs.disposition;
 
         const sourceHtml = obs.source && obs.source !== "human"
           ? '<span class="obs-source">' + esc(obs.source) + "</span>"
@@ -581,19 +690,60 @@
           ? '<span class="obs-project">' + esc(obs.project) + "</span>"
           : "";
 
+        const actionsExpanded = expandedActions.has(obs.id);
+        const actionsToggleLabel = actionsExpanded ? "hide actions" : "actions";
+
+        let actionLogHtml = "";
+        if (actionsExpanded) {
+          const cached = actionCache[obs.id];
+          if (cached) {
+            if (cached.length === 0) {
+              actionLogHtml = '<div class="obs-action-log"><div class="action-empty">no actions yet</div></div>';
+            } else {
+              actionLogHtml = '<div class="obs-action-log">' +
+                cached.map(renderActionItem).join("") +
+              '</div>';
+            }
+          } else {
+            actionLogHtml = '<div class="obs-action-log"><div class="action-empty">loading...</div></div>';
+          }
+        }
+
         return '<div class="observation">' +
           '<input type="checkbox" class="obs-checkbox" data-id="' + obs.id + '" ' + checked + ' />' +
-          '<span class="obs-status" data-status="' + esc(obs.status) + '" data-id="' + obs.id + '">' + esc(obs.status) + "</span>" +
+          '<span class="obs-disposition" data-disposition="' + esc(obs.disposition) + '" data-id="' + obs.id + '">' + esc(dispositionLabel) + "</span>" +
           '<div class="obs-body">' +
             '<div class="obs-text">' + esc(obs.text) + "</div>" +
             '<div class="obs-meta">' +
               sourceHtml +
               projectHtml +
               '<span class="obs-time">' + relativeTime(obs.created_at) + "</span>" +
+              '<button class="obs-actions-toggle" data-id="' + obs.id + '">' + actionsToggleLabel + '</button>' +
             "</div>" +
+            actionLogHtml +
           "</div>" +
           '<button class="obs-delete" data-id="' + obs.id + '" title="delete">\u00d7</button>' +
         "</div>";
+      }
+
+      function renderActionItem(action) {
+        let refHtml = "";
+        if (action.reference) {
+          const isUrl = action.reference.startsWith("http://") || action.reference.startsWith("https://");
+          refHtml = isUrl
+            ? '<span class="action-reference"><a href="' + esc(action.reference) + '" target="_blank" rel="noopener">' + esc(action.reference) + '</a></span>'
+            : '<span class="action-reference">' + esc(action.reference) + '</span>';
+        }
+
+        return '<div class="action-item">' +
+          '<div class="action-description">' + esc(action.description) + '</div>' +
+          '<div class="action-meta">' +
+            '<span>' + esc(action.source) + '</span>' +
+            (action.project ? '<span>' + esc(action.project) + '</span>' : '') +
+            refHtml +
+            '<span>' + relativeTime(action.created_at) + '</span>' +
+          '</div>' +
+        '</div>';
       }
 
       function updateActionBar() {
@@ -610,6 +760,57 @@
         captureFlash.classList.add("visible");
         setTimeout(() => captureFlash.classList.remove("visible"), 1500);
       }
+
+      function closePicker() {
+        if (openPicker) {
+          openPicker.remove();
+          openPicker = null;
+        }
+      }
+
+      function showDispositionPicker(badgeEl, obsId, currentDisposition) {
+        closePicker();
+
+        const picker = document.createElement("div");
+        picker.className = "disposition-picker";
+
+        for (const d of DISPOSITIONS) {
+          const option = document.createElement("div");
+          option.className = "disposition-picker-option";
+          if (d.value === currentDisposition) {
+            option.style.fontWeight = "700";
+          }
+          option.innerHTML = '<span class="dot" style="background: ' + d.color + '"></span>' + esc(d.label);
+          option.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            closePicker();
+            if (d.value === currentDisposition) return;
+
+            try {
+              await fetch("/api/observations/" + obsId, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ disposition: d.value }),
+              });
+              await fetchObservations();
+            } catch (err) {
+              console.error("Failed to update disposition:", err);
+            }
+          });
+          picker.appendChild(option);
+        }
+
+        badgeEl.style.position = "relative";
+        badgeEl.appendChild(picker);
+        openPicker = picker;
+      }
+
+      // Close picker on outside click
+      document.addEventListener("click", (e) => {
+        if (openPicker && !e.target.closest(".obs-disposition")) {
+          closePicker();
+        }
+      });
 
       // Capture form
       captureForm.addEventListener("submit", async (e) => {
@@ -640,25 +841,37 @@
         }
       });
 
-      // Status click — advance to next status
+      // Disposition click — show picker
       observationList.addEventListener("click", async (e) => {
-        const statusEl = e.target.closest(".obs-status");
-        if (statusEl) {
-          const id = parseInt(statusEl.dataset.id, 10);
-          const current = statusEl.dataset.status;
-          const idx = STATUS_ORDER.indexOf(current);
-          if (idx < 0 || idx >= STATUS_ORDER.length - 1) return;
-          const next = STATUS_ORDER[idx + 1];
+        const dispositionEl = e.target.closest(".obs-disposition");
+        if (dispositionEl && !e.target.closest(".disposition-picker")) {
+          e.stopPropagation();
+          const id = parseInt(dispositionEl.dataset.id, 10);
+          const current = dispositionEl.dataset.disposition;
+          showDispositionPicker(dispositionEl, id, current);
+          return;
+        }
 
-          try {
-            await fetch("/api/observations/" + id, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status: next }),
-            });
-            await fetchObservations();
-          } catch (err) {
-            console.error("Failed to update status:", err);
+        // Actions toggle
+        const actionsToggle = e.target.closest(".obs-actions-toggle");
+        if (actionsToggle) {
+          const id = parseInt(actionsToggle.dataset.id, 10);
+          if (expandedActions.has(id)) {
+            expandedActions.delete(id);
+            render();
+          } else {
+            expandedActions.add(id);
+            render();
+            // Fetch actions if not cached
+            if (!actionCache[id]) {
+              try {
+                const res = await fetch("/api/observations/" + id + "/actions");
+                actionCache[id] = await res.json();
+                render();
+              } catch (err) {
+                console.error("Failed to fetch actions:", err);
+              }
+            }
           }
           return;
         }
@@ -714,8 +927,7 @@
       });
 
       // Filters
-      filterStatus.addEventListener("change", fetchObservations);
-
+      filterDisposition.addEventListener("change", fetchObservations);
       filterSource.addEventListener("change", fetchObservations);
       filterProject.addEventListener("change", fetchObservations);
 
